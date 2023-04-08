@@ -9,97 +9,104 @@ import { useServer } from "graphql-ws/lib/use/ws";
 import { PubSub, withFilter } from "graphql-subscriptions";
 import bodyParser from "body-parser";
 import cors from "cors";
+import { typeDefs } from "../typeDefs.js";
 
 const PORT = 4000;
 const pubsub = new PubSub();
 
-let users = [
-  { id: 1, name: "Stas", age: 12 },
-  { id: 2, name: "Vova", age: 20 },
+const users = [
+  { id: "1", name: "Stas" },
+  { id: "2", name: "Vova" },
+];
+
+const games = [
+  { id: 1, userId1: 1, userId2: 2, winnerId: "1" },
+  { id: 2, userId1: 1, userId2: 2, winnerId: "2" },
+];
+
+const rounds = [
+  { gameId: "1", id: "1", user1: "0", user2: "1" },
+  { gameId: "1", id: "2", user1: "0", user2: "0" },
+  { gameId: "1", id: "3", user1: "0", user2: "0" },
+  { gameId: "1", id: "4", user1: "0", user2: "1" },
+
+  { gameId: "2", id: "5", user1: "0", user2: "0" },
+  { gameId: "2", id: "6", user1: "0", user2: "2" },
+  { gameId: "2", id: "7", user1: "0", user2: "2" },
+  { gameId: "2", id: "8", user1: "0", user2: "0" },
 ];
 
 // Schema definition
-const typeDefs = `#graphql
+// const typeDefs = `#graphql
 
-  type User {
-    id: ID,
-    name: String,
-    age: Int
-  }
+//   type User {
+//     id: ID,
+//     name: String,
+//     age: Int
+//   }
 
-  type Query {
-    currentNumber: Int
-    getAllUsers: [User!]!
-    getUser(id: ID!): User
-  }
+//   type Query {
+//     currentNumber: Int
+//     getAllUsers: [User!]!
+//     getUser(id: ID!): User
+//   }
 
-  type Mutation {
-    updateAgeUser(id: ID!, newAge: Int!): User
-  }
+//   type Mutation {
+//     updateAgeUser(id: ID!, newAge: Int!): User
+//   }
 
-  type Subscription {
-    numberIncremented: Int
-    watchAgeUser(id: ID): User
-  }
-`;
+//   type Subscription {
+//     numberIncremented: Int
+//     watchAgeUser(id: ID): User
+//   }
+// `;
 
-// Resolver map
 const resolvers = {
   Query: {
-    currentNumber() {
-      return currentNumber;
-    },
     getAllUsers: () => {
       return users;
     },
-    getUser: (id: number) => {
-      return users.find((user) => user.id == id);
-    },
-  },
-  Mutation: {
-    updateAgeUser: async (_, { id, newAge }) => {
-      const findUserIndex = users.findIndex((user) => user.id == id);
-      const updatedUser = { ...users[findUserIndex], age: newAge };
+    getUser: (_, { id }) => {
+      console.log("id", id);
 
-      pubsub.publish("NEW_AGE_USER", { watchAgeUser: updatedUser });
+      const result = users.find((user) => user.id == id);
+      console.log("result", result);
 
-      users[findUserIndex] = updatedUser;
-      return users[findUserIndex];
+      return result;
     },
   },
-  Subscription: {
-    numberIncremented: {
-      subscribe: withFilter(
-        () => pubsub.asyncIterator(["NUMBER_INCREMENTED"]),
-        (payload, variables) => payload.numberIncremented % 2 === 0
-      ),
-    },
-    watchAgeUser: {
-      subscribe: withFilter(
-        () => pubsub.asyncIterator(["NEW_AGE_USER"]),
-        (payload, variables) => payload.watchAgeUser.age % 2 === 0
-      ),
-    },
-  },
+  // Mutation: {
+  //   updateAgeUser: async (_, { id, newAge }) => {
+  //     const findUserIndex = users.findIndex((user) => user.id == id);
+  //     const updatedUser = { ...users[findUserIndex], age: newAge };
+
+  //     pubsub.publish("NEW_AGE_USER", { watchAgeUser: updatedUser });
+
+  //     users[findUserIndex] = updatedUser;
+  //     return users[findUserIndex];
+  //   },
+  // },
+  // Subscription: {
+  //   watchAgeUser: {
+  //     subscribe: withFilter(
+  //       () => pubsub.asyncIterator(["NEW_AGE_USER"]),
+  //       (payload, variables) => payload.watchAgeUser.age % 2 === 0
+  //     ),
+  //   },
+  // },
 };
 
-// Create schema, which will be used separately by ApolloServer and
-// the WebSocket server.
 const schema = makeExecutableSchema({ typeDefs, resolvers });
 
-// Create an Express app and HTTP server; we will attach the WebSocket
-// server and the ApolloServer to this HTTP server.
 const app = express();
 const httpServer = createServer(app);
 
-// Set up WebSocket server.
 const wsServer = new WebSocketServer({
   server: httpServer,
   path: "/graphql",
 });
 const serverCleanup = useServer({ schema }, wsServer);
 
-// Set up ApolloServer.
 const server = new ApolloServer({
   schema,
   plugins: [
@@ -124,22 +131,9 @@ app.use(
   expressMiddleware(server)
 );
 
-// Now that our HTTP server is fully set up, actually listen.
 httpServer.listen(PORT, () => {
   console.log(`🚀 Query endpoint ready at http://localhost:${PORT}/graphql`);
   console.log(
     `🚀 Subscription endpoint ready at ws://localhost:${PORT}/graphql`
   );
 });
-
-// In the background, increment a number every second and notify subscribers when it changes.
-let currentNumber = 0;
-
-function incrementNumber() {
-  currentNumber++;
-  pubsub.publish("NUMBER_INCREMENTED", { numberIncremented: currentNumber });
-  setTimeout(incrementNumber, 1000);
-}
-
-// Start incrementing
-incrementNumber();
